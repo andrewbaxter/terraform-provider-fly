@@ -4,6 +4,10 @@ This was forked from the [original provider](https://github.com/fly-apps/terrafo
 
 I'm not actively using Fly at the moment - I'll try to fix things if I have time, but otherwise I hope I'll be prompt in reviewing and merging PRs.
 
+## Terraform Registry - andrewbaxter/fly
+
+Terraform resources are documented on the Terraform Registry, published to [andrewbaxter/fly](https://registry.terraform.io/providers/andrewbaxter/fly/latest/docs).
+
 ## Contributions
 
 My only request is try not to change more than is necessary in a PR (i.e. leave formatting alone, if there are multiple unrelated changes turn them into multiple MRs, etc).
