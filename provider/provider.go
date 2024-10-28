@@ -47,10 +47,11 @@ func (p *flyProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		)
 		return
 	}
-	if data.FlyToken.IsNull() {
-		token = os.Getenv("FLY_API_TOKEN")
-	} else {
+	if !data.FlyToken.IsNull() {
 		token = data.FlyToken.ValueString()
+	}
+	if token == "" {
+		token = os.Getenv("FLY_API_TOKEN")
 	}
 	if token == "" {
 		resp.Diagnostics.AddError(
@@ -60,12 +61,15 @@ func (p *flyProvider) Configure(ctx context.Context, req provider.ConfigureReque
 		return
 	}
 
-	endpoint, exists := os.LookupEnv("FLY_HTTP_ENDPOINT")
-	restBaseUrl := "https://api.machines.dev"
+	restBaseUrl := ""
 	if !data.FlyHttpEndpoint.IsNull() && !data.FlyHttpEndpoint.IsUnknown() {
 		restBaseUrl = data.FlyHttpEndpoint.ValueString()
-	} else if exists {
-		restBaseUrl = endpoint
+	}
+	if restBaseUrl == "" {
+		restBaseUrl = os.Getenv("FLY_HTTP_ENDPOINT")
+	}
+	if restBaseUrl == "" {
+		restBaseUrl = "https://api.machines.dev"
 	}
 
 	enableTracing := false
