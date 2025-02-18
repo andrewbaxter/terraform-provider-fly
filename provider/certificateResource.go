@@ -147,7 +147,6 @@ func (r *flyCertResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 func (cr *flyCertResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	resp.Diagnostics.AddError("The fly api does not allow updating certs once created", "Try deleting and then recreating the cert with new options")
-	return
 	// We could maybe instead flag every attribute with RequiresReplace?
 }
 

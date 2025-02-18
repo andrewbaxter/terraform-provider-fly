@@ -2,14 +2,14 @@ package machineapi
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/Khan/genqlient/graphql"
 	"github.com/andrewbaxter/terraform-provider-fly/providerstate"
 	"github.com/andrewbaxter/terraform-provider-fly/utils"
+	"github.com/hashicorp/go-hclog"
 	hreq "github.com/imroc/req/v3"
 	"github.com/superfly/flyctl/api"
 )
@@ -17,7 +17,6 @@ import (
 var NonceHeader = "fly-machine-lease-nonce"
 
 type MachineAPI struct {
-	client     *graphql.Client
 	HttpClient *hreq.Client
 	baseUrl    string
 }
@@ -168,156 +167,157 @@ func NewMachineApi(ctx context.Context, state *providerstate.State) *MachineAPI 
 	return out
 }
 
-func (a *MachineAPI) LockMachine(app string, id string, timeout int) (*MachineLease, error) {
-	var res MachineLease
-	_, err := a.HttpClient.R().SetSuccessResult(&res).Post(fmt.Sprintf("%s/v1/apps/%s/machines/%s/lease?ttl=%d", a.baseUrl, app, id, timeout))
+func reqNoBody[O any](ctx context.Context, a *MachineAPI, url string, method string) (*O, error) {
+	return reqFull[any, O](ctx, a, url, method, nil, nil)
+}
+
+func req[I any, O any](ctx context.Context, a *MachineAPI, url string, method string, reqBody I) (*O, error) {
+	return reqFull[I, O](ctx, a, url, method, nil, &reqBody)
+}
+
+func reqFull[I any, O any](ctx context.Context, a *MachineAPI, url string, method string, headers map[string]string, reqBody *I) (*O, error) {
+	var res O
+	var errBody any
+	req := a.HttpClient.R().SetContext(ctx)
+	if headers != nil {
+		req.
+			SetHeaders(headers)
+	}
+	if reqBody != nil {
+		req.SetBody(*reqBody)
+	}
+	req.SetSuccessResult(&res)
+	req.SetErrorResult(&errBody)
+	_, err := req.Send(method, url)
 	if err != nil {
-		return nil, err
+		errBodyJson, _ := json.MarshalIndent(errBody, "", "   ")
+		return nil, fmt.Errorf("API error [%s] to [%s]: %s\nResponse body: %s", url, method, err, string(errBodyJson))
 	}
 	return &res, nil
 }
 
-func (a *MachineAPI) ReleaseMachine(lease MachineLease, app string, id string) error {
-	_, err := a.HttpClient.R().SetHeader(NonceHeader, lease.Data.Nonce).Delete(fmt.Sprintf("%s/v1/apps/%s/machines/%s/lease", a.baseUrl, app, id))
-	if err != nil {
-		return err
-	}
-	return nil
+func (a *MachineAPI) LockMachine(ctx context.Context, app string, id string, timeout int) (*MachineLease, error) {
+	return reqNoBody[MachineLease](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s/lease?ttl=%d", a.baseUrl, app, id, timeout), http.MethodPost)
 }
 
-func (a *MachineAPI) WaitForMachine(app string, id string, instanceID string) error {
-	_, err := a.HttpClient.R().Get(fmt.Sprintf("%s/v1/apps/%s/machines/%s/wait?instance_id=%s", a.baseUrl, app, id, instanceID))
+func (a *MachineAPI) ReleaseMachine(ctx context.Context, lease MachineLease, app string, id string) error {
+	_, err := reqNoBody[any](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s/lease", a.baseUrl, app, id), http.MethodDelete)
+	return err
+}
+
+func (a *MachineAPI) WaitForMachine(ctx context.Context, app string, id string, instanceID string) error {
+	_, err := reqNoBody[any](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s/wait?instance_id=%s", a.baseUrl, app, id, instanceID), http.MethodGet)
 	return err
 }
 
 // CreateMachine takes a MachineCreateOrUpdateRequest and creates the requested machine in the given app and then writes the response into the `res` param
-func (a *MachineAPI) CreateMachine(req MachineCreateOrUpdateRequest, app string, res *MachineResponse) error {
-	if req.Config.Guest.CpuType == "" {
-		req.Config.Guest.CpuType = "shared"
+func (a *MachineAPI) CreateMachine(ctx context.Context, reqBody MachineCreateOrUpdateRequest, app string) (*MachineResponse, error) {
+	if reqBody.Config.Guest.CpuType == "" {
+		reqBody.Config.Guest.CpuType = "shared"
 	}
-	if req.Config.Guest.Cpus == 0 {
-		req.Config.Guest.Cpus = 1
+	if reqBody.Config.Guest.Cpus == 0 {
+		reqBody.Config.Guest.Cpus = 1
 	}
-	if req.Config.Guest.MemoryMb == 0 {
-		req.Config.Guest.MemoryMb = 256
+	if reqBody.Config.Guest.MemoryMb == 0 {
+		reqBody.Config.Guest.MemoryMb = 256
 	}
-	createResponse, err := a.HttpClient.R().SetBody(req).SetSuccessResult(res).Post(fmt.Sprintf("%s/v1/apps/%s/machines", a.baseUrl, app))
-
-	if err != nil {
-		return err
-	}
-
-	if createResponse.StatusCode != http.StatusCreated && createResponse.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("Create request failed: %s, %+v", createResponse.Status, createResponse))
-	}
-	return nil
+	return req[MachineCreateOrUpdateRequest, MachineResponse](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines", a.baseUrl, app), http.MethodPost, reqBody)
 }
 
-func (a *MachineAPI) UpdateMachine(req MachineCreateOrUpdateRequest, app string, id string, res *MachineResponse) error {
-	if req.Config.Guest.CpuType == "" {
-		req.Config.Guest.CpuType = "shared"
+func (a *MachineAPI) UpdateMachine(ctx context.Context, reqBody MachineCreateOrUpdateRequest, app string, id string, res *MachineResponse) error {
+	if reqBody.Config.Guest.CpuType == "" {
+		reqBody.Config.Guest.CpuType = "shared"
 	}
-	if req.Config.Guest.Cpus == 0 {
+	if reqBody.Config.Guest.Cpus == 0 {
 		//You can't have a machine with no cpus
-		req.Config.Guest.Cpus = 1
+		reqBody.Config.Guest.Cpus = 1
 	}
-	if req.Config.Guest.MemoryMb == 0 {
+	if reqBody.Config.Guest.MemoryMb == 0 {
 		//You can't have a machine with no memory
-		req.Config.Guest.MemoryMb = 256
+		reqBody.Config.Guest.MemoryMb = 256
 	}
-	lease, err := a.LockMachine(app, id, 30)
+	lease, err := a.LockMachine(ctx, app, id, 30)
 	if err != nil {
 		return err
 	}
-	reqRes, err := a.HttpClient.R().SetBody(req).SetSuccessResult(res).SetHeader(NonceHeader, lease.Data.Nonce).Post(fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id))
+	defer func() {
+		err := a.ReleaseMachine(ctx, *lease, app, id)
+		if err != nil {
+			hclog.Default().Error("Error releasing lock on app [%s] machine [%s]: %s", app, id, err)
+		}
+	}()
+	_, err = reqFull[MachineCreateOrUpdateRequest, MachineResponse](
+		ctx,
+		a,
+		fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id),
+		http.MethodPost,
+		map[string]string{
+			NonceHeader: lease.Data.Nonce,
+		},
+		&reqBody,
+	)
 	if err != nil {
 		return err
-	}
-	err = a.ReleaseMachine(*lease, app, id)
-	if err != nil {
-		return err
-	}
-	if reqRes.StatusCode != http.StatusCreated && reqRes.StatusCode != http.StatusOK {
-		return errors.New(fmt.Sprintf("Update request failed: %s, %+v", reqRes.Status, reqRes))
 	}
 	return nil
 }
 
-func (a *MachineAPI) ReadMachine(app string, id string, res *MachineResponse) (*hreq.Response, error) {
-	return a.HttpClient.R().SetSuccessResult(res).Get(fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id))
+func (a *MachineAPI) ReadMachine(ctx context.Context, app string, id string) (*MachineResponse, error) {
+	return reqNoBody[MachineResponse](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id), http.MethodGet)
 }
 
-func (a *MachineAPI) DeleteMachine(app string, id string, maxRetries int) error {
-	deleted := false
+func (a *MachineAPI) DeleteMachine(ctx context.Context, app string, id string, maxRetries int) error {
 	for i := 0; i < maxRetries; i++ {
-		var machine MachineResponse
-		readResponse, err := a.HttpClient.R().SetSuccessResult(&machine).Get(fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id))
+		machine, err := reqNoBody[MachineResponse](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id), http.MethodGet)
 		if err != nil {
 			return err
 		}
 
-		if readResponse.StatusCode == 200 {
-			if machine.State == "started" || machine.State == "starting" || machine.State == "replacing" {
-				_, _ = a.HttpClient.R().Post(fmt.Sprintf("%s/v1/apps/%s/machines/%s/stop", a.baseUrl, app, id))
+		switch machine.State {
+		case "started", "starting":
+			_, err := reqNoBody[MachineResponse](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s/stop", a.baseUrl, app, id), http.MethodPost)
+			if err != nil {
+				return err
 			}
-			if machine.State == "stopping" || machine.State == "destroying" {
-				time.Sleep(5 * time.Second)
+		case "stopping", "destroying", "replacing":
+			time.Sleep(5 * time.Second)
+		case "stopped", "replaced":
+			_, err := reqNoBody[MachineResponse](ctx, a, fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id), http.MethodDelete)
+			if err != nil {
+				return err
 			}
-			if machine.State == "stopped" || machine.State == "replaced" {
-				_, err = a.HttpClient.R().Delete(fmt.Sprintf("%s/v1/apps/%s/machines/%s", a.baseUrl, app, id))
-				if err != nil {
-					return err
-				}
-			}
-			if machine.State == "destroyed" {
-				deleted = true
-				break
-			}
+		case "destroyed":
+			return nil
 		}
 	}
-	if !deleted {
-		return errors.New("max retries exceeded")
-	}
-	return nil
+	return fmt.Errorf("reached max attempts while trying to delete app %s machine %s", app, id)
 }
 
 func (a *MachineAPI) CreateVolume(ctx context.Context, name, app, region string, size int) (*api.Volume, error) {
-	var res api.Volume
-	_, err := a.HttpClient.R().SetContext(ctx).SetBody(api.CreateVolumeRequest{
-		Name:   name,
-		Region: region,
-		SizeGb: &size,
-	}).SetSuccessResult(&res).Post(fmt.Sprintf("%s/v1/apps/%s/volumes", a.baseUrl, app))
-	if err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return req[api.CreateVolumeRequest, api.Volume](
+		ctx,
+		a,
+		fmt.Sprintf("%s/v1/apps/%s/volumes", a.baseUrl, app),
+		http.MethodPost, api.CreateVolumeRequest{
+			Name:   name,
+			Region: region,
+			SizeGb: &size,
+		},
+	)
 }
 
 func (a *MachineAPI) GetVolume(ctx context.Context, id, app string) (*api.Volume, error) {
-	var res api.Volume
-	_, err := a.HttpClient.R().SetContext(ctx).SetSuccessResult(&res).Get(fmt.Sprintf("%s/v1/apps/%s/volumes/%s", a.baseUrl, app, id))
-	if err != nil {
-		return nil, err
-	}
-
-	return &res, nil
+	return reqNoBody[api.Volume](ctx, a, fmt.Sprintf("%s/v1/apps/%s/volumes/%s", a.baseUrl, app, id), http.MethodGet)
 }
 
 func (a *MachineAPI) ExtendVolume(ctx context.Context, app string, id string, size int) error {
-	_, err := a.HttpClient.R().SetContext(ctx).SetBody(map[string]any{
+	_, err := req[map[string]any, any](ctx, a, fmt.Sprintf("%s/v1/apps/%s/volumes/%s/extend", a.baseUrl, app, id), http.MethodPut, map[string]any{
 		"size_gb": size,
-	}).Put(fmt.Sprintf("%s/v1/apps/%s/volumes/%s/extend", a.baseUrl, app, id))
-	if err != nil {
-		return err
-	}
-	return nil
+	})
+	return err
 }
 
 func (a *MachineAPI) DeleteVolume(ctx context.Context, app string, id string) error {
-	_, err := a.HttpClient.R().SetContext(ctx).Delete(fmt.Sprintf("%s/v1/apps/%s/volumes/%s", a.baseUrl, app, id))
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err := reqNoBody[any](ctx, a, fmt.Sprintf("%s/v1/apps/%s/volumes/%s", a.baseUrl, app, id), http.MethodDelete)
+	return err
 }

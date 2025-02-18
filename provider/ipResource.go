@@ -162,7 +162,6 @@ func (r *flyIpResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		"The fly api does not allow updating ips once created",
 		"Try deleting and then recreating the ip with new options",
 	)
-	return
 }
 
 func (r *flyIpResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

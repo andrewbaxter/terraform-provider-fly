@@ -351,8 +351,7 @@ func (r *flyMachineResource) Create(ctx context.Context, req resource.CreateRequ
 
 	machineApi := machineapi.NewMachineApi(ctx, r.state)
 
-	var newMachine machineapi.MachineResponse
-	err := machineApi.CreateMachine(createReq, data.App.ValueString(), &newMachine)
+	newMachine, err := machineApi.CreateMachine(ctx, createReq, data.App.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create machine", err.Error())
 		return
@@ -399,7 +398,7 @@ func (r *flyMachineResource) Create(ctx context.Context, req resource.CreateRequ
 		data.Mounts = tfmounts
 	}
 
-	err = machineApi.WaitForMachine(data.App.ValueString(), data.Id.ValueString(), newMachine.InstanceID)
+	err = machineApi.WaitForMachine(ctx, data.App.ValueString(), data.Id.ValueString(), newMachine.InstanceID)
 	if err != nil {
 		//FIXME(?): For now we just assume that the orchestrator is in fact going to faithfully execute our request
 		tflog.Info(ctx, "Waiting errored")
@@ -420,9 +419,7 @@ func (r *flyMachineResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	machineApi := machineapi.NewMachineApi(ctx, r.state)
 
-	var machine machineapi.MachineResponse
-
-	_, err := machineApi.ReadMachine(data.App.ValueString(), data.Id.ValueString(), &machine)
+	machine, err := machineApi.ReadMachine(ctx, data.App.ValueString(), data.Id.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create machine", err.Error())
 		return
@@ -549,7 +546,7 @@ func (r *flyMachineResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	var updatedMachine machineapi.MachineResponse
 
-	err := machineApi.UpdateMachine(updateReq, state.App.ValueString(), state.Id.ValueString(), &updatedMachine)
+	err := machineApi.UpdateMachine(ctx, updateReq, state.App.ValueString(), state.Id.ValueString(), &updatedMachine)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update machine", err.Error())
 		return
@@ -597,7 +594,7 @@ func (r *flyMachineResource) Update(ctx context.Context, req resource.UpdateRequ
 		state.Mounts = tfmounts
 	}
 
-	err = machineApi.WaitForMachine(state.App.ValueString(), state.Id.ValueString(), updatedMachine.InstanceID)
+	err = machineApi.WaitForMachine(ctx, state.App.ValueString(), state.Id.ValueString(), updatedMachine.InstanceID)
 	if err != nil {
 		tflog.Info(ctx, "Waiting errored")
 	}
@@ -619,7 +616,7 @@ func (r *flyMachineResource) Delete(ctx context.Context, req resource.DeleteRequ
 
 	machineApi := machineapi.NewMachineApi(ctx, r.state)
 
-	err := machineApi.DeleteMachine(data.App.ValueString(), data.Id.ValueString(), 50)
+	err := machineApi.DeleteMachine(ctx, data.App.ValueString(), data.Id.ValueString(), 50)
 	if err != nil {
 		resp.Diagnostics.AddError("Machine delete failed", err.Error())
 		return
