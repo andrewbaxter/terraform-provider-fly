@@ -145,6 +145,15 @@ query IpAddressQuery($app: String, $addr: String!) {
   }
 }
 
+query IpAddressByIdQuery($id: ID!) {
+  ipAddress(id: $id) {
+    id
+    type
+    address
+    region
+  }
+}
+
 mutation AllocateIpAddress(
   $app: ID!
   $region: String

@@ -80,21 +80,22 @@ func (d *ipDataSourceType) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	addr := data.Address.ValueString()
+	id := data.Id.ValueString()
 	app := data.App.ValueString()
-	query, err := graphql.IpAddressQuery(ctx, d.state.GraphqlClient, app, addr)
-	tflog.Info(ctx, fmt.Sprintf("Query res: for %s %s %+v", app, addr, query))
+	query, err := graphql.IpAddressByIdQuery(ctx, d.state.GraphqlClient, id)
+	tflog.Info(ctx, fmt.Sprintf("Query res: for app %s id %s %+v", app, id, query))
 	if err != nil {
-		utils.HandleGraphqlErrors(&resp.Diagnostics, err, "Error looking up ip address (app [%s], addr [%s])", app, addr)
+		utils.HandleGraphqlErrors(&resp.Diagnostics, err, "Error looking up ip address (app [%s], id [%s])", app, id)
 		return
 	}
 
-	region := query.App.IpAddress.Region
+	region := query.IpAddress.Region
 	if region == "" {
 		region = "global"
 	}
 	data.Region = types.StringValue(region)
-	data.Address = types.StringValue(query.App.IpAddress.Address)
+	data.Address = types.StringValue(query.IpAddress.Address)
+	data.Type = types.StringValue(string(query.IpAddress.Type))
 
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)

@@ -923,6 +923,36 @@ const (
 	IPAddressTypeSharedV4  IPAddressType = "shared_v4"
 )
 
+// IpAddressByIdQueryIpAddressIPAddress includes the requested fields of the GraphQL type IPAddress.
+type IpAddressByIdQueryIpAddressIPAddress struct {
+	Id      string        `json:"id"`
+	Type    IPAddressType `json:"type"`
+	Address string        `json:"address"`
+	Region  string        `json:"region"`
+}
+
+// GetId returns IpAddressByIdQueryIpAddressIPAddress.Id, and is useful for accessing the field via an interface.
+func (v *IpAddressByIdQueryIpAddressIPAddress) GetId() string { return v.Id }
+
+// GetType returns IpAddressByIdQueryIpAddressIPAddress.Type, and is useful for accessing the field via an interface.
+func (v *IpAddressByIdQueryIpAddressIPAddress) GetType() IPAddressType { return v.Type }
+
+// GetAddress returns IpAddressByIdQueryIpAddressIPAddress.Address, and is useful for accessing the field via an interface.
+func (v *IpAddressByIdQueryIpAddressIPAddress) GetAddress() string { return v.Address }
+
+// GetRegion returns IpAddressByIdQueryIpAddressIPAddress.Region, and is useful for accessing the field via an interface.
+func (v *IpAddressByIdQueryIpAddressIPAddress) GetRegion() string { return v.Region }
+
+// IpAddressByIdQueryResponse is returned by IpAddressByIdQuery on success.
+type IpAddressByIdQueryResponse struct {
+	IpAddress IpAddressByIdQueryIpAddressIPAddress `json:"ipAddress"`
+}
+
+// GetIpAddress returns IpAddressByIdQueryResponse.IpAddress, and is useful for accessing the field via an interface.
+func (v *IpAddressByIdQueryResponse) GetIpAddress() IpAddressByIdQueryIpAddressIPAddress {
+	return v.IpAddress
+}
+
 // IpAddressQueryApp includes the requested fields of the GraphQL type App.
 type IpAddressQueryApp struct {
 	IpAddress IpAddressQueryAppIpAddressIPAddress `json:"ipAddress"`
@@ -1347,6 +1377,14 @@ type __GetFullAppInput struct {
 
 // GetName returns __GetFullAppInput.Name, and is useful for accessing the field via an interface.
 func (v *__GetFullAppInput) GetName() string { return v.Name }
+
+// __IpAddressByIdQueryInput is used internally by genqlient
+type __IpAddressByIdQueryInput struct {
+	Id string `json:"id"`
+}
+
+// GetId returns __IpAddressByIdQueryInput.Id, and is useful for accessing the field via an interface.
+func (v *__IpAddressByIdQueryInput) GetId() string { return v.Id }
 
 // __IpAddressQueryInput is used internally by genqlient
 type __IpAddressQueryInput struct {
@@ -1873,6 +1911,44 @@ func GetFullApp(
 	var err error
 
 	var data GetFullAppResponse
+	resp := &graphql.Response{Data: &data}
+
+	err = client.MakeRequest(
+		ctx,
+		req,
+		resp,
+	)
+
+	return &data, err
+}
+
+// The query or mutation executed by IpAddressByIdQuery.
+const IpAddressByIdQuery_Operation = `
+query IpAddressByIdQuery ($id: ID!) {
+	ipAddress(id: $id) {
+		id
+		type
+		address
+		region
+	}
+}
+`
+
+func IpAddressByIdQuery(
+	ctx context.Context,
+	client graphql.Client,
+	id string,
+) (*IpAddressByIdQueryResponse, error) {
+	req := &graphql.Request{
+		OpName: "IpAddressByIdQuery",
+		Query:  IpAddressByIdQuery_Operation,
+		Variables: &__IpAddressByIdQueryInput{
+			Id: id,
+		},
+	}
+	var err error
+
+	var data IpAddressByIdQueryResponse
 	resp := &graphql.Response{Data: &data}
 
 	err = client.MakeRequest(
